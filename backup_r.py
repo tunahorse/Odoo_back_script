@@ -1,34 +1,43 @@
-# Import the necessary modules
-import os
-import subprocess
-import telegram_send
+import logging
+import boto3
+import telegram
+import odoo
 
-# Set the database to be backed up
-db_name = 'my_database_name'
+# Set up logging
+logging.basicConfig(filename='odoo_backup.log', level=logging.INFO)
 
-# Set the directory where the backup will be saved
-backup_dir = '/path/to/backup/directory'
+# Set up AWS S3 client
+s3 = boto3.client('s3')
 
-# Set the filename for the backup
-backup_file = '{}-backup.zip'.format(db_name)
+# Set up Telegram bot
+bot = telegram.Bot(token='TELEGRAM_BOT_TOKEN')
 
-# Create the backup command
-backup_cmd = 'odoo-bin -d {} -o -r admin -w admin --db_host=localhost --db_port=8069 --db_user=odoo --db_password=odoo --addons-path=../odoo/addons -r admin -w admin -b {} -f {}'.format(db_name, backup_dir, backup_file)
+# Set up Odoo instance
+odoo_instance = odoo.api.Environment(
+    host='ODOO_HOST',
+    port=ODOO_PORT,
+    user='ODOO_USER',
+    password='ODOO_PASSWORD'
+)
 
-# Try to run the backup command
 try:
-    subprocess.run(backup_cmd, shell=True)
-    # Send a notification message
-    telegram_send.send(messages=['Odoo backup completed successfully.'])
+    # Perform backup
+    backup = odoo_instance.backup()
 
-# Catch any errors that occur
+    # Send backup to S3 bucket
+    s3.upload_fileobj(backup, 'BUCKET_NAME', 'odoo_backup.zip')
+
+    # Send success message via Telegram
+    bot.send_message(
+        chat_id='TELEGRAM_CHAT_ID',
+        text='Odoo backup successful!')
+
 except Exception as e:
-    # Send a notification message with the error details
-    telegram_send.send(messages=['Odoo backup failed with error: {}'.format(e)])
+    # Log error
+    logging.exception(e)
 
-
-
-## Cron job
-
-## 0 * * * * python /path/to/script/odoo_backup.py
+    # Send error message via Telegram
+    bot.send_message(
+        chat_id='TELEGRAM_CHAT_ID',
+        text='Odoo backup failed!')
 
