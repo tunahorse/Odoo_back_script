@@ -4,30 +4,45 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
+	"time"
+
+	"github.com/joho/godotenv"
+	"gopkg.in/telegram-bot-api.v4"
 )
 
 func main() {
-	// Set the database name and the path to save the backup file
-	dbName := "my_odoo_db"
-	backupPath := "/path/to/save/odoo_db_backup.dump"
-
-	// Create a new file to save the backup to
-	file, err := os.Create(backupPath)
+	// Load environment variables
+	err := godotenv.Load()
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error loading .env file")
 	}
-	defer file.Close()
 
-	// Use the "pg_dump" command to create the backup
-	cmd := exec.Command("pg_dump", dbName)
-	cmd.Stdout = file
+	// Get telegram bot token and chat ID
+	botToken := os.Getenv("TELEGRAM_BOT_TOKEN")
+	chatID := os.Getenv("TELEGRAM_CHAT_ID")
 
-	// Run the command and check for errors
-	err = cmd.Run()
+	// Create a new telegram bot API client
+	bot, err := tgbotapi.NewBotAPI(botToken)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	fmt.Println("Odoo database backup created successfully!")
+	// Get odoo instance URL
+	odooURL := os.Getenv("ODOO_URL")
+
+	// Set up a timer to run the backup job every 24 hours
+	ticker := time.NewTicker(24 * time.Hour)
+	for range ticker.C {
+		// Execute a curl command to back up the odoo instance
+		output, err := exec.Command("curl", "-X", "POST", odooURL + "/web/database/backup", "-d", "token=" + os.Getenv("ODOO_TOKEN")).Output()
+		if err != nil {
+			// Send a message through telegram if there was an error
+			msg := tgbotapi.NewMessage(chatID, "Error backing up odoo instance: "+err.Error())
+			bot.Send(msg)
+		} else {
+			// Send a message through telegram if the backup was successful
+			msg := tgbotapi.NewMessage(chatID, "Odoo instance successfully backed up. Output: "+string(output))
+			bot.Send(msg)
+		}
+	}
 }
